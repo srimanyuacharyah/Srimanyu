@@ -1,0 +1,1220 @@
+import tkinter as tk
+# Try to import customtkinter; if it's missing, provide a lightweight Tkinter-based fallback
+try:
+    import customtkinter as ctk
+except Exception as _err:
+    print("Warning: 'customtkinter' not installed. Using Tkinter fallback (UI will be more basic).\nInstall with: pip install customtkinter for full UI.")
+
+    # Minimal shims that provide the subset of the CustomTkinter API used by this app.
+    def set_appearance_mode(mode):
+        return None
+
+    def set_default_color_theme(theme):
+        return None
+
+    class CTk(tk.Tk):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+
+    class CTkFrame(tk.Frame):
+        def __init__(self, parent=None, **kw):
+            bg = kw.pop('fg_color', None)
+            super().__init__(parent, bg=bg if isinstance(bg, str) else None)
+            # allow pack/grid/place defaults to pass
+            try:
+                self.configure(padx=0, pady=0)
+            except Exception:
+                pass
+
+    # Basic visual defaults for the fallback to look nicer
+    DEFAULT_FONT = ("Arial", 12)
+    DEFAULT_BUTTON_FONT = ("Arial", 11, "bold")
+
+    class CTkButton(tk.Button):
+        def __init__(self, parent=None, **kw):
+            cmd = kw.pop('command', None)
+            text = kw.pop('text', '')
+            # accept and ignore customtkinter-specific params
+            kw.pop('height', None)
+            kw.pop('width', None)
+            kw.pop('fg_color', None)
+            kw.pop('corner_radius', None)
+            super().__init__(parent, text=text, command=cmd, font=DEFAULT_BUTTON_FONT)
+            # Apply additional options passed through configure
+            if kw:
+                try:
+                    self.configure(**kw)
+                except Exception:
+                    pass
+        def configure(self, **kw):
+            super().configure(**kw)
+
+    class CTkLabel(tk.Label):
+        def __init__(self, parent=None, **kw):
+            text = kw.pop('text', '')
+            font = kw.pop('font', DEFAULT_FONT)
+            super().__init__(parent, text=text, font=font, wraplength=kw.pop('wraplength', None))
+            if 'text_color' in kw:
+                try:
+                    self.configure(fg=kw['text_color'])
+                except Exception:
+                    pass
+        def configure(self, **kw):
+            super().configure(**kw)
+
+    class CTkEntry(tk.Entry):
+        def __init__(self, parent=None, **kw):
+            super().__init__(parent, font=DEFAULT_FONT)
+        def get(self):
+            return super().get()
+        def delete(self, a, b=None):
+            return super().delete(a, b if b is not None else None)
+        def insert(self, idx, s):
+            return super().insert(idx, s)
+
+    class CTkScrollableFrame(tk.Frame):
+        def __init__(self, parent=None, **kw):
+            super().__init__(parent)
+        def winfo_children(self):
+            return super().winfo_children()
+
+    class CTkSwitch:
+        def __init__(self, parent=None, text='', command=None, onvalue=True, offvalue=False, **kw):
+            self.var = tk.BooleanVar(value=False)
+            self._cb = tk.Checkbutton(parent, text=text, variable=self.var, command=command)
+        def pack(self, *a, **kw):
+            self._cb.pack(*a, **kw)
+        def select(self):
+            self.var.set(True)
+        def deselect(self):
+            self.var.set(False)
+        def get(self):
+            return self.var.get()
+        def configure(self, **kw):
+            self._cb.configure(**kw)
+
+    class CTkRadioButton:
+        def __init__(self, parent=None, text='', variable=None, value=None, **kw):
+            self._rb = tk.Radiobutton(parent, text=text, variable=variable, value=value)
+        def pack(self, *a, **kw):
+            self._rb.pack(*a, **kw)
+
+    class CTkToplevel(tk.Toplevel):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            try:
+                self.attributes('-topmost', True)
+            except Exception:
+                pass
+
+    class CTkTextbox(tk.Text):
+        def __init__(self, parent=None, height=10, **kw):
+            super().__init__(parent, height=height)
+        def insert(self, index, text):
+            super().insert(index, text)
+        def see(self, index):
+            try:
+                super().see(index)
+            except Exception:
+                pass
+        def configure(self, **kw):
+            super().configure(**kw)
+
+    class CTkProgressBar(tk.Frame):
+        def __init__(self, parent=None, height=10, progress_color=None, **kw):
+            super().__init__(parent, height=height)
+
+    class CTkTabview(tk.Frame):
+        def __init__(self, parent=None, width=None, **kw):
+            super().__init__(parent)
+            self._tabs = {}
+        def add(self, name):
+            frame = tk.Frame(self)
+            self._tabs[name] = frame
+        def tab(self, name):
+            return self._tabs.get(name, tk.Frame(self))
+
+    # Namespace object to mimic the module
+    class _CTKNS:
+        pass
+
+    ctk = _CTKNS()
+    ctk.set_appearance_mode = set_appearance_mode
+    ctk.set_default_color_theme = set_default_color_theme
+    ctk.CTk = CTk
+    ctk.CTkFrame = CTkFrame
+    ctk.CTkButton = CTkButton
+    ctk.CTkLabel = CTkLabel
+    ctk.CTkEntry = CTkEntry
+    ctk.CTkScrollableFrame = CTkScrollableFrame
+    ctk.CTkSwitch = CTkSwitch
+    ctk.CTkRadioButton = CTkRadioButton
+    ctk.CTkToplevel = CTkToplevel
+    ctk.CTkTextbox = CTkTextbox
+    ctk.CTkProgressBar = CTkProgressBar
+    ctk.CTkTabview = CTkTabview
+
+import json
+import os
+import random
+import re
+import base64
+import math
+import difflib
+import string
+import threading
+from collections import Counter
+from datetime import datetime
+from typing import List, Dict, Tuple
+
+# --- OPTIONAL VOICE DEPENDENCIES ---
+try:
+    import pyttsx3
+    import speech_recognition as sr
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
+    print("Voice libraries not found. Install 'pyttsx3' and 'SpeechRecognition'.")
+
+# --- UI CONFIGURATION ---
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
+
+# --- DATA & PERSISTENCE ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "tutor_profile.json")
+VAULT_FILE = os.path.join(BASE_DIR, "secure_vault.json")
+
+DEFAULT_USER_DATA = {
+    "username": "Commander",
+    "score": 0,
+    "level": "Novice",
+    "badges": [],
+    "weak_points": [],
+    "completed_scenarios": [],
+    "privacy_score": 0,
+    "last_active": "",
+    "voice_assistant": False,
+    "theme": "Dark",
+    "language": "en"
+} 
+
+# --- LOCALIZATION DATABASE ---
+TRANSLATIONS = {
+    "en": {
+        "app_title": "CYBER COMMAND",
+        "dashboard": "Dashboard",
+        "simulations": "Simulations",
+        "neural_shield": "Neural Shield",
+        "cybergpt": "CyberGPT",
+        "encryption": "Encryption Lab",
+        "sos": "SOS Center",
+        "panic": "Panic Room",
+        "vault": "Secure Vault",
+        "welcome": "WELCOME",
+        "status": "System Status: ONLINE | Voice Module: ACTIVE",
+        "defense_level": "YOUR CYBER DEFENSE LEVEL",
+        "secure": "SECURE",
+        "vulnerable": "VULNERABLE",
+        "critical": "CRITICAL",
+        "run_analysis": "RUN ANALYSIS",
+        "speak": "🔊 Speak",
+        "listen": "🎤 Listen",
+        "send": "SEND",
+        "listening": "Listening...",
+        "analyzing": "Analyzing...",
+        "spam_verdict": "VERDICT",
+        "confidence": "Confidence",
+        "tone": "TONE",
+        "vault_empty": "Vault is empty.",
+        "voice_assistant": "Voice Assistant",
+        "enable_voice": "Enable Voice",
+        "voice_on": "Voice: ON",
+        "voice_off": "Voice: OFF",
+        "voice_listening": "Listening for command...",
+        "voice_help": "Voice commands: dashboard, simulations, neural shield, vault, encryption, panic, start game, switch to Kannada/English, dark mode, light mode, help"
+    },
+    "kn": {
+        "app_title": "ಸೈಬರ್ ಕಮಾಂಡ್",
+        "dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+        "simulations": "ಸಿಮ್ಯುಲೇಶನ್",
+        "neural_shield": "ನ್ಯೂರಲ್ ಶೀಲ್ಡ್",
+        "cybergpt": "ಸೈಬರ್ ಜಿಪಿಟಿ",
+        "encryption": "ಎನ್‌ಕ್ರಿಪ್ಶನ್ ಲ್ಯಾಬ್",
+        "sos": "ತುರ್ತು ಕೇಂದ್ರ (SOS)",
+        "panic": "ಪ್ಯಾನಿಕ್ ರೂಮ್",
+        "vault": "ಸುರಕ್ಷಿತ ವಾಲ್ಟ್",
+        "welcome": "ಸುಸ್ವಾಗತ",
+        "status": "ಸಿಸ್ಟಮ್ ಸ್ಥಿತಿ: ಆನ್‌ಲೈನ್ | ಧ್ವನಿ: ಸಕ್ರಿಯ",
+        "defense_level": "ನಿಮ್ಮ ಸೈಬರ್ ಸುರಕ್ಷತಾ ಮಟ್ಟ",
+        "secure": "ಸುರಕ್ಷಿತ",
+        "vulnerable": "ಅಪಾಯವಿದೆ",
+        "critical": "ಗಂಭೀರವಾಗಿದೆ",
+        "run_analysis": "ಪರಿಶೀಲಿಸಿ",
+        "speak": "🔊 ಓದಿ",
+        "listen": "🎤 ಹೇಳಿ",
+        "send": "ಕಳುಹಿಸಿ",
+        "listening": "ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದೆ...",
+        "analyzing": "ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...",
+        "spam_verdict": "ತೀರ್ಪು",
+        "confidence": "ಖಚಿತತೆ",
+        "tone": "ಧ್ವನಿ",
+        "vault_empty": "ವಾಲ್ಟ್ ಖಾಲಿಯಾಗಿದೆ.",
+        "voice_assistant": "ಧ್ವನಿ ಸಹಾಯಕ",
+        "enable_voice": "ಧ್ವನಿಯನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ",
+        "voice_on": "ಧ್ವನಿ: ಸಕ್ರಿಯ",
+        "voice_off": "ಧ್ವನಿ: ನಿಷ್ಕ್ರಿಯ",
+        "voice_listening": "ಕಮಾಂಡ್ ಕೇಳುತ್ತಿದೆ...",
+        "voice_help": "ಕಮಾಂಡ್‌ಗಳು: ಡ್ಯಾಶ್‌ಬೋರ್ಡ್, ಸಿಮ್ಯುಲೇಶನ್, ನ್ಯೂರಲ್ ಶೀಲ್ಡ್, ವಾಲ್ಟ್, ಎನ್‌ಕ್ರಿಪ್ಶನ್, ಪ್ಯಾನಿಕ್, ಗೇಮ್ ಪ್ರಾರಂಭಿಸಿ, ಕನ್ನಡಕ್ಕೆ ಬದಲಿಸಿ/ಇಂಗ್ಲಿಷ್‌ಗೆ ಬದಲಿಸಿ, ಡಾರ್ಕ್ ಮೋಡ್, ಲೈಟ್ ಮೋಡ್, ಸಹಾಯ"
+    }
+}
+
+# --- AI ENGINE 1: NAIVE BAYES SPAM FILTER ---
+class NaiveBayesSpamFilter:
+    def __init__(self):
+        self.spam_counts = Counter()
+        self.ham_counts = Counter()
+        self.spam_total = 0
+        self.ham_total = 0
+        self.vocab = set()
+        self.alpha = 1.0 
+
+        self.train_data = [
+            ("urgent update account suspended verify now", "spam"),
+            ("congratulations you won lottery claim prize", "spam"),
+            ("electricity disconnect bill unpaid call immediately", "spam"),
+            ("kyc pending update pan card link", "spam"),
+            ("police case cbi digital arrest video call", "spam"),
+            ("loan approved instant credit click link", "spam"),
+            ("block card unauthorized transaction call", "spam"),
+            ("hey how are you doing today", "ham"),
+            ("meeting rescheduled to 4pm office", "ham"),
+            ("project report attached please review", "ham"),
+            ("can we talk later busy right now", "ham"),
+            ("electricity bill paid successfully thank you", "ham"),
+            ("your otp for login is 1234 do not share", "ham")
+        ]
+        self.train()
+
+    def preprocess(self, text):
+        text = text.lower()
+        text = text.translate(str.maketrans('', '', string.punctuation))
+        return re.findall(r'\w+', text)
+
+    def train(self):
+        for text, label in self.train_data:
+            words = self.preprocess(text)
+            if label == "spam":
+                self.spam_counts.update(words)
+                self.spam_total += len(words)
+            else:
+                self.ham_counts.update(words)
+                self.ham_total += len(words)
+            self.vocab.update(words)
+
+    def predict(self, text):
+        words = self.preprocess(text)
+        if not words: return "UNKNOWN", 0.0
+
+        spam_score = 0.0
+        ham_score = 0.0
+        vocab_len = len(self.vocab)
+        
+        for word in words:
+            p_w_spam = (self.spam_counts[word] + self.alpha) / (self.spam_total + self.alpha * vocab_len)
+            spam_score += math.log(p_w_spam)
+            p_w_ham = (self.ham_counts[word] + self.alpha) / (self.ham_total + self.alpha * vocab_len)
+            ham_score += math.log(p_w_ham)
+
+        prob_diff = spam_score - ham_score
+        try:
+            confidence = (1 / (1 + math.exp(-prob_diff))) * 100
+        except OverflowError:
+            confidence = 100.0 if prob_diff > 0 else 0.0
+
+        return "SPAM" if spam_score > ham_score else "SAFE", confidence
+
+# --- AI ENGINE 2: SENTIMENT & URGENCY DETECTOR ---
+class UrgencyDetector:
+    def __init__(self):
+        self.urgency_keywords = {
+            "immediately", "now", "urgent", "suspended", "blocked", 
+            "arrest", "police", "seized", "illegal", "expires", "24 hours",
+            "ತುರ್ತು", "ತಕ್ಷಣ", "ಬಂಧನ", "ಬ್ಲಾಕ್" # Kannada keywords roughly
+        }
+        self.safe_keywords = {
+            "successfully", "received", "confirmed", "scheduled", "thanks", "hello",
+            "ಯಶಸ್ವಿಯಾಗಿ", "ಸ್ವೀಕರಿಸಲಾಗಿದೆ", "ಧನ್ಯವಾದಗಳು"
+        }
+
+    def analyze(self, text):
+        words = set(re.findall(r'\w+', text.lower()))
+        urgency_score = len(words.intersection(self.urgency_keywords))
+        safe_score = len(words.intersection(self.safe_keywords))
+        
+        if urgency_score > 0 and urgency_score > safe_score:
+            return "HIGH URGENCY", "#FF4757"
+        elif safe_score > urgency_score:
+            return "NEUTRAL / CALM", "#2ED573"
+        else:
+            return "UNCERTAIN TONE", "#FFA502"
+
+# --- AI ENGINE 3: PASSWORD ENTROPY CALCULATOR ---
+class PasswordEntropyAI:
+    def calculate(self, password):
+        if not password: return 0, "N/A"
+        pool_size = 0
+        if re.search(r'[a-z]', password): pool_size += 26
+        if re.search(r'[A-Z]', password): pool_size += 26
+        if re.search(r'[0-9]', password): pool_size += 10
+        if re.search(r'[^a-zA-Z0-9]', password): pool_size += 32
+        length = len(password)
+        entropy = length * math.log2(pool_size) if pool_size > 0 else 0
+        guesses = 2 ** entropy
+        seconds = guesses / 1_000_000_000
+        
+        if seconds < 60: time_str = "Instantly"
+        elif seconds < 3600: time_str = f"{seconds/60:.0f} Mins"
+        elif seconds < 86400: time_str = f"{seconds/3600:.0f} Hours"
+        elif seconds < 31536000: time_str = f"{seconds/86400:.0f} Days"
+        else: time_str = "Years/Centuries"
+        return entropy, time_str
+
+# --- CONTENT BANKS (Multi-Lang Support) ---
+SCENARIO_BANK = [
+    {
+        "id": 1, "category": "Phishing", 
+        "title": {"en": "The 'Electricity Bill' Alert", "kn": "'ವಿದ್ಯುತ್ ಬಿಲ್' ಎಚ್ಚರಿಕೆ"},
+        "text": {"en": "SMS: 'Dear Consumer, your electricity will be disconnected tonight 9:30 PM because your previous month's bill was not updated. Call 88xxx-xxxxx immediately.'", 
+                 "kn": "SMS: 'ಗ್ರಾಹಕರೇ, ಕಳೆದ ತಿಂಗಳ ಬಿಲ್ ಪಾವತಿಸದ ಕಾರಣ ಇಂದು ರಾತ್ರಿ 9:30 ಕ್ಕೆ ನಿಮ್ಮ ವಿದ್ಯುತ್ ಸಂಪರ್ಕ ಕಡಿತಗೊಳ್ಳಲಿದೆ. ಕೂಡಲೇ 88xxx-xxxxx ಗೆ ಕರೆ ಮಾಡಿ.'"},
+        "options": {"en": ["Call the number", "Ignore & check official app", "Forward to friends"],
+                    "kn": ["ಆ ನಂಬರ್‌ಗೆ ಕರೆ ಮಾಡಿ", "ನಿರ್ಲಕ್ಷಿಸಿ ಮತ್ತು ಅಧಿಕೃತ ಆಪ್ ಪರಿಶೀಲಿಸಿ", "ಸ್ನೇಹಿತರಿಗೆ ಕಳುಹಿಸಿ"]},
+        "correct": 1, 
+        "explanation": {"en": "Utility companies never alert via personal numbers. Always use the official BESCOM/Adani/State app.",
+                        "kn": "ವಿದ್ಯುತ್ ಇಲಾಖೆಯವರು ವೈಯಕ್ತಿಕ ನಂಬರ್‌ನಿಂದ ಮೆಸೇಜ್ ಮಾಡುವುದಿಲ್ಲ. ಯಾವಾಗಲೂ ಅಧಿಕೃತ ಬೆಸ್ಕಾಂ (BESCOM) ಆಪ್ ಬಳಸಿ."}
+    },
+    {
+        "id": 2, "category": "UPI Scams", 
+        "title": {"en": "OLX 'Receive Money' QR", "kn": "OLX 'ಹಣ ಸ್ವೀಕರಿಸಿ' QR ಕೋಡ್"},
+        "text": {"en": "Buyer sends QR code: 'I have paid. Scan this to receive money in your account.'",
+                 "kn": "ಖರೀದಿದಾರ QR ಕೋಡ್ ಕಳುಹಿಸಿ ಹೇಳುತ್ತಾನೆ: 'ನಾನು ಹಣ ಕಳುಹಿಸಿದ್ದೇನೆ. ಹಣ ಪಡೆಯಲು ಈ ಕೋಡ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ.'"},
+        "options": {"en": ["Scan it", "Refuse - PIN is for paying only", "Enter PIN to verify"],
+                    "kn": ["ಸ್ಕ್ಯಾನ್ ಮಾಡಿ", "ನಿರಾಕರಿಸಿ - PIN ಕೇವಲ ಹಣ ನೀಡಲು", "PIN ನಮೂದಿಸಿ"]},
+        "correct": 1, 
+        "explanation": {"en": "QR codes and UPI PINs are ONLY used to SEND money. You never scan to receive.",
+                        "kn": "QR ಕೋಡ್ ಮತ್ತು UPI PIN ಕೇವಲ ಹಣ ಕಳುಹಿಸಲು ಮಾತ್ರ ಬಳಸಲಾಗುತ್ತದೆ. ಹಣ ಪಡೆಯಲು ಸ್ಕ್ಯಾನ್ ಮಾಡಬೇಡಿ."}
+    }
+]
+
+AI_KNOWLEDGE_BASE = {
+    "en": {
+        "phishing": "Phishing uses fake messages to steal data. Look for: Urgency, Bad Grammar, Mismatched URLs.",
+        "upi": "UPI PIN is ONLY for paying. Never enter it to receive money.",
+        "password": "Strong passwords use 12+ chars, symbols, and mixed case.",
+        "1930": "1930 is the National Cyber Crime Helpline number in India.",
+        "digital arrest": "Police/CBI do NOT conduct video call arrests. If you get a 'FedEx' or 'Drugs' call, it's a scam."
+    },
+    "kn": {
+        "phishing": "ಫಿಶಿಂಗ್ ಅಂದರೆ ನಕಲಿ ಸಂದೇಶಗಳ ಮೂಲಕ ಮಾಹಿತಿ ಕದಿಯುವುದು. ಕಾಗುಣಿತ ತಪ್ಪುಗಳನ್ನು ಗಮನಿಸಿ.",
+        "upi": "UPI PIN ಕೇವಲ ಹಣ ಕಳುಹಿಸಲು ಮಾತ್ರ. ಹಣ ಪಡೆಯಲು ಎಂದಿಗೂ PIN ಹಾಕಬೇಡಿ.",
+        "password": "ಬಲವಾದ ಪಾಸ್‌ವರ್ಡ್ ಕನಿಷ್ಠ 12 ಅಕ್ಷರಗಳನ್ನು ಹೊಂದಿರಲಿ (ಚಿಹ್ನೆಗಳು ಮತ್ತು ಸಂಖ್ಯೆಗಳೊಂದಿಗೆ).",
+        "1930": "1930 ಎಂಬುದು ಭಾರತದ ರಾಷ್ಟ್ರೀಯ ಸೈಬರ್ ಕ್ರೈಮ್ ಸಹಾಯವಾಣಿ ಸಂಖ್ಯೆ.",
+        "digital arrest": "ಪೊಲೀಸರು ವಿಡಿಯೋ ಕಾಲ್ ಮೂಲಕ ಬಂಧಿಸುವುದಿಲ್ಲ. 'ಫೆಡ್‌ಎಕ್ಸ್' ಹೆಸರಿನ ಕರೆಗಳು ಬಂದರೆ ಎಚ್ಚರ."
+    }
+}
+
+CYBER_NEWS_TICKER = [
+    "⚠️ AI ALERT: New 'Deepfake CEO' fraud costing millions...",
+    "ℹ️ TIP: Enable 2FA on Instagram today...",
+    "🛡️ UPDATE: Android 15 adds 'Theft Detection Lock'...",
+    "📞 HELPLINE: Dial 1930 for Cyber Financial Fraud..."
+]
+
+# --- COLORS (Light Mode, Dark Mode) ---
+C_BG = ("#F0F2F5", "#121212")
+C_SURFACE = ("#FFFFFF", "#1E1E1E")
+C_TEXT = ("#1A1A1A", "#FFFFFF")
+C_TEXT_SEC = ("#606060", "#AAAAAA")
+C_PRIMARY = ("#007BFF", "#00F2FE")
+C_ACCENT = ("#6C5CE7", "#4FACFE")
+C_DANGER = ("#DC3545", "#FF4757")
+C_SUCCESS = ("#28A745", "#2ED573")
+
+class SafetyTutorApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        # Make callback exceptions visible (surface stack traces in console and show toast)
+        def _tk_report_callback_exception(exc, val, tb):
+            import traceback
+            traceback.print_exception(exc, val, tb)
+            try:
+                # Attempt to show visual toast, but won't raise further
+                self.show_toast(f"Error: {val}")
+            except Exception:
+                pass
+        # Assign handler
+        self.report_callback_exception = _tk_report_callback_exception
+
+        self.title("Offline Safety Tutor: Cyber Command")
+        self.geometry("1280x850")
+        
+        # Initialize AI Models
+        self.spam_classifier = NaiveBayesSpamFilter()
+        self.urgency_detector = UrgencyDetector()
+        self.entropy_calc = PasswordEntropyAI()
+        
+        # Voice Engine
+        self.tts_engine = None
+        if VOICE_AVAILABLE:
+            try:
+                self.tts_engine = pyttsx3.init()
+            except: pass
+        
+        # State
+        self.lang = "en" # Default Language
+        self.current_scenario_idx = 0
+        self.panic_timer_id = None
+        self.ticker_idx = 0
+        self.dark_mode = True 
+        
+        # Load Data
+        self.load_data()
+        self.load_vault()
+        # Apply persisted preferences
+        self.lang = self.user_data.get('language', self.lang)
+        theme = self.user_data.get('theme', 'Dark')
+        ctk.set_appearance_mode(theme)
+        self.dark_mode = (theme == 'Dark')
+        self.voice_enabled = self.user_data.get('voice_assistant', False) 
+        
+        # Layout
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        self.setup_sidebar()
+        self.setup_main_container()
+        self.show_dashboard()
+
+    def t(self, key):
+        """Helper for translation"""
+        return TRANSLATIONS.get(self.lang, TRANSLATIONS["en"]).get(key, key)
+
+    def speak_text(self, text):
+        """Runs TTS in a separate thread"""
+        if not VOICE_AVAILABLE or not self.tts_engine:
+            print("TTS Not Available")
+            return
+            
+        def _speak():
+            try:
+                self.tts_engine.say(text)
+                self.tts_engine.runAndWait()
+            except Exception as e:
+                print(f"TTS Error: {e}")
+        
+        threading.Thread(target=_speak, daemon=True).start()
+
+    def listen_voice(self, callback_entry):
+        """Listens to microphone and inserts text into entry"""
+        if not VOICE_AVAILABLE: return
+
+        def _listen():
+            recognizer = sr.Recognizer()
+            with sr.Microphone() as source:
+                print("Listening...")
+                # Optional: Update UI to show listening state if possible
+                try:
+                    audio = recognizer.listen(source, timeout=5)
+                    # Attempt to recognize based on current lang
+                    lang_code = "kn-IN" if self.lang == "kn" else "en-US"
+                    text = recognizer.recognize_google(audio, language=lang_code)
+                    
+                    # Update GUI from thread
+                    callback_entry.delete(0, "end")
+                    callback_entry.insert(0, text)
+                    if hasattr(self, 'process_voice_command'):
+                        self.process_voice_command(text) # Trigger action (pass recognized text)
+                except Exception as e:
+                    print(f"STT Error: {e}")
+
+        threading.Thread(target=_listen, daemon=True).start()
+
+    # --- DATA MANAGEMENT ---
+    def load_data(self):
+        if os.path.exists(DATA_FILE):
+            try:
+                with open(DATA_FILE, 'r') as f:
+                    loaded = json.load(f)
+                # Merge with defaults so new keys are preserved
+                self.user_data = DEFAULT_USER_DATA.copy()
+                if isinstance(loaded, dict):
+                    self.user_data.update(loaded)
+            except:
+                self.user_data = DEFAULT_USER_DATA.copy()
+        else:
+            self.user_data = DEFAULT_USER_DATA.copy()
+
+    def save_data(self):
+        self.user_data["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        with open(DATA_FILE, 'w') as f: json.dump(self.user_data, f, indent=4)
+
+    def load_vault(self):
+        if os.path.exists(VAULT_FILE):
+            try:
+                with open(VAULT_FILE, 'r') as f: self.vault_data = json.load(f)
+            except: self.vault_data = {}
+        else: self.vault_data = {}
+
+    def save_vault(self):
+        with open(VAULT_FILE, 'w') as f: json.dump(self.vault_data, f, indent=4)
+
+    # --- Voice & Assistant Helpers ---
+    def toggle_voice_assistant(self):
+        # Toggle and persist user preference
+        enabled = bool(self.voice_switch.get())
+        self.voice_enabled = enabled
+        self.user_data['voice_assistant'] = enabled
+        self.save_data()
+        # Update mic and status label
+        if hasattr(self, 'mic_btn'):
+            self.mic_btn.configure(state=("normal" if enabled and VOICE_AVAILABLE else "disabled"))
+        if hasattr(self, 'voice_status_lbl'):
+            self.voice_status_lbl.configure(text=self.t("voice_on") if enabled else self.t("voice_off"))
+        # Optional auditory confirmation
+        if enabled and VOICE_AVAILABLE and self.tts_engine:
+            self.speak_text("Voice Assistant enabled" if self.lang == 'en' else "ಧ್ವನಿ ಸಹಾಯಕ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ")
+
+    def listen_for_command(self):
+        if not VOICE_AVAILABLE:
+            win = ctk.CTkToplevel(self)
+            win.title("Voice Unavailable")
+            ctk.CTkLabel(win, text="Voice libraries not available. Install 'pyttsx3' and 'SpeechRecognition'.").pack(padx=20,pady=20)
+            ctk.CTkButton(win, text="OK", command=win.destroy).pack(pady=10)
+            return
+        if not getattr(self, 'voice_enabled', False):
+            win = ctk.CTkToplevel(self)
+            win.title("Enable Voice")
+            ctk.CTkLabel(win, text="Please enable Voice Assistant first.").pack(padx=20,pady=20)
+            ctk.CTkButton(win, text="OK", command=win.destroy).pack(pady=10)
+            return
+
+        def _listen():
+            recognizer = sr.Recognizer()
+            try:
+                with sr.Microphone() as source:
+                    print("Listening for command...")
+                    if VOICE_AVAILABLE and self.tts_engine:
+                        self.speak_text(self.t('voice_listening'))
+                    audio = recognizer.listen(source, timeout=5)
+                    lang_code = "kn-IN" if self.lang == "kn" else "en-US"
+                    text = recognizer.recognize_google(audio, language=lang_code)
+                    print("Voice command:", text)
+                    self.process_voice_command(text)
+            except Exception as e:
+                print("STT Error:", e)
+                if VOICE_AVAILABLE and self.tts_engine:
+                        self.speak_text("Sorry, I couldn't hear that." if self.lang == 'en' else "ಕ್ಷಮಿಸಿ, ಕೇಳಿಸಲಿಲ್ಲ.")
+        threading.Thread(target=_listen, daemon=True).start()
+
+    def process_voice_command(self, text: str):
+        if not text: return
+        t = text.lower()
+        response = None
+
+    def run_mic_test(self):
+        """Runs a short microphone test and displays the recognized text."""
+        if not VOICE_AVAILABLE:
+            self.show_toast("Voice libraries missing")
+            return
+        if not getattr(self, 'voice_enabled', False):
+            self.show_toast(self.t('enable_voice'))
+            return
+
+        def _test():
+            try:
+                import speech_recognition as sr
+                r = sr.Recognizer()
+                with sr.Microphone() as source:
+                    r.adjust_for_ambient_noise(source, duration=0.8)
+                    if VOICE_AVAILABLE and self.tts_engine:
+                        self.speak_text(self.t('voice_listening'))
+                    audio = r.listen(source, timeout=5, phrase_time_limit=5)
+                    try:
+                        text = r.recognize_google(audio, language=("kn-IN" if self.lang=='kn' else "en-US"))
+                        self.show_toast(f"Heard: {text}")
+                        if VOICE_AVAILABLE and self.tts_engine:
+                            self.speak_text(text)
+                    except Exception as e:
+                        print('Mic test recognition failed', e)
+                        self.show_toast("Could not understand audio")
+            except Exception as e:
+                print('Mic test error', e)
+                self.show_toast(str(e))
+
+        threading.Thread(target=_test, daemon=True).start()
+        # Navigation
+        if any(k in t for k in ("dashboard", "home", "main")):
+            self.show_dashboard(); response = "Opening Dashboard" if self.lang=='en' else "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ತೆರೆಯಲಾಗುತ್ತಿದೆ"
+        elif any(k in t for k in ("neural", "neural shield", "shield")):
+            self.show_neural_shield(); response = "Opening Neural Shield" if self.lang=='en' else "ನ್ಯೂರಲ್ ಶೀಲ್ಡ್ ತೆರೆಯಲಾಗುತ್ತಿದೆ"
+        elif any(k in t for k in ("simulation", "simulations", "start game")):
+            self.start_game(); response = "Starting Simulation" if self.lang=='en' else "ಸಿಮ್ಯುಲೇಶನ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ"
+        elif "vault" in t or "ವಾಲ್ಟ್" in t:
+            self.show_vault(); response = "Opening Vault" if self.lang=='en' else "ವಾಲ್ಟ್ ತೆರೆಯಲಾಗುತ್ತಿದೆ"
+        elif "encryption" in t or "ಎನ್‌ಕ್ರಿಪ್" in t:
+            self.show_encryption_lab(); response = "Opening Encryption Lab" if self.lang=='en' else "ಎನ್‌ಕ್ರಿಪ್ಶನ್ ಲ್ಯಾಬ್ ತೆರೆಯಲಾಗುತ್ತಿದೆ"
+        elif "sos" in t or "help" in t:
+            self.show_sos_center(); response = "Opening SOS Center" if self.lang=='en' else "SOS ಕೇಂದ್ರ ತೆರೆಯಲಾಗುತ್ತಿದೆ"
+        elif "panic" in t or "panic room" in t:
+            self.start_panic_drill(); response = "Starting Panic Drill" if self.lang=='en' else "ಪ್ಯಾನಿಕ್ ಡ್ರಿಲ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ"
+
+        # Language switches
+        elif "kannada" in t or "ಕನ್ನಡ" in t:
+            self.lang = 'kn'
+            self.user_data['language'] = 'kn'
+            self.save_data()
+            # Refresh UI labels
+            for key, btn in self.nav_btns.items():
+                current_text = btn.cget("text")
+                icon_part = current_text[:6]
+                btn.configure(text=f"{icon_part}{self.t(key)}")
+            response = "Language switched to Kannada" if self.lang=='en' else "ಭಾಷೆ ಕನ್ನಡಕ್ಕೆ ಬದಲಾಯಿಸಲಾಗಿದೆ"
+        elif "english" in t or "ಇಂಗ್ಲಿಷ್" in t:
+            self.lang = 'en'
+            self.user_data['language'] = 'en'
+            self.save_data()
+            for key, btn in self.nav_btns.items():
+                current_text = btn.cget("text")
+                icon_part = current_text[:6]
+                btn.configure(text=f"{icon_part}{self.t(key)}")
+            response = "Language switched to English" if self.lang=='en' else "Language switched to English"
+
+        # Theme
+        elif "dark" in t or "ಡಾರ್ಕ್" in t:
+            self.theme_switch.select(); self.toggle_theme(); response = "Switched to Dark Mode" if self.lang=='en' else "ಡಾರ್ಕ್ ಮೋಡ್‌ಗೆ ಬದಲಾಯಿಸಲಾಗಿದೆ"
+        elif "light" in t or "ಲೈಟ್" in t:
+            self.theme_switch.deselect(); self.toggle_theme(); response = "Switched to Light Mode" if self.lang=='en' else "ಲೈಟ್ ಮೋಡ್‌ಗೆ ಬದಲಾಯಿಸಲಾಗಿದೆ"
+
+        # Help
+        elif any(k in t for k in ("help", "commands", "command")):
+            response = self.t('voice_help')
+
+        else:
+            response = "Sorry, I didn't understand that." if self.lang=='en' else "ಕ್ಷಮಿಸಿ, ಅರ್ಥವಾಗಲಿಲ್ಲ"
+
+        # Provide feedback
+        if response:
+            # auditory
+            if VOICE_AVAILABLE and self.tts_engine:
+                self.speak_text(response)
+            # visual
+            self.show_toast(response)
+
+    def show_toast(self, msg, duration=2500):
+        try:
+            win = ctk.CTkToplevel(self)
+            win.attributes('-topmost', True)
+            win.geometry("300x80")
+            win.overrideredirect(True)
+            ctk.CTkLabel(win, text=msg, font=("Arial", 12)).pack(expand=True, fill="both", padx=10, pady=10)
+            self.after(duration, win.destroy)
+        except Exception as e:
+            print("Toast error:", e)
+
+    # --- UI COMPONENTS ---
+    def setup_sidebar(self):
+        self.sidebar = ctk.CTkFrame(self, width=260, corner_radius=0, fg_color=("white", "#1a1a1a"))
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        
+        # Header
+        head = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        head.pack(pady=30, padx=20)
+        ctk.CTkLabel(head, text="🛡️ CYBER", font=("Impact", 28), text_color=C_PRIMARY).pack()
+        ctk.CTkLabel(head, text="COMMAND", font=("Impact", 28), text_color=C_ACCENT).pack()
+        
+        # Menu
+        self.nav_btns = {}
+        # Keys here correspond to translation keys
+        menu = [
+            ("dashboard", "📊", self.show_dashboard),
+            ("simulations", "🎮", self.start_game),
+            ("neural_shield", "🧠", self.show_neural_shield),
+            ("cybergpt", "🤖", self.show_cybergpt),
+            ("encryption", "🔐", self.show_encryption_lab),
+            ("sos", "🆘", self.show_sos_center),
+            ("panic", "🚨", self.start_panic_drill),
+            ("vault", "💼", self.show_vault)
+        ]
+        
+        for key, icon, cmd in menu:
+            btn = ctk.CTkButton(self.sidebar, text=f"  {icon}  {self.t(key)}", 
+                               anchor="w", height=45, corner_radius=8,
+                               fg_color="transparent", text_color=C_TEXT,
+                               font=("Roboto Medium", 14),
+                               hover_color=("gray85", "#333333"), command=cmd)
+            btn.pack(pady=4, padx=15, fill="x")
+            self.nav_btns[key] = btn # Store by key to update text later
+
+        # Language & Theme & Voice Controls
+        lang_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        lang_frame.pack(side="bottom", pady=10)
+        
+        self.lang_btn = ctk.CTkButton(lang_frame, text="🇺🇸 English / ಕನ್ನಡ", command=self.toggle_language, 
+                                      width=150, fg_color=C_PRIMARY)
+        self.lang_btn.pack(pady=5)
+
+        # Theme Toggle
+        self.theme_switch = ctk.CTkSwitch(lang_frame, text="Dark Mode", command=self.toggle_theme,
+                                          onvalue=True, offvalue=False)
+        if self.dark_mode:
+            self.theme_switch.select()
+        else:
+            self.theme_switch.deselect()
+        self.theme_switch.pack(pady=5)
+
+        # Voice Assistant Toggle
+        self.voice_switch = ctk.CTkSwitch(lang_frame, text=self.t("voice_assistant"), command=self.toggle_voice_assistant,
+                                          onvalue=True, offvalue=False)
+        if getattr(self, 'voice_enabled', False):
+            self.voice_switch.select()
+        self.voice_switch.pack(pady=5)
+
+        self.mic_btn = ctk.CTkButton(lang_frame, text="🎤", width=60, command=self.listen_for_command,
+                                     fg_color=C_ACCENT)
+        if not VOICE_AVAILABLE or not getattr(self, 'voice_enabled', False):
+            try:
+                self.mic_btn.configure(state="disabled")
+            except Exception:
+                pass
+        self.mic_btn.pack(pady=5)
+
+        # Test Mic Button
+        self.test_mic_btn = ctk.CTkButton(lang_frame, text="Test Mic", width=120, command=self.run_mic_test,
+                                          fg_color=C_PRIMARY)
+        if not VOICE_AVAILABLE or not getattr(self, 'voice_enabled', False):
+            try:
+                self.test_mic_btn.configure(state="disabled")
+            except Exception:
+                pass
+        self.test_mic_btn.pack(pady=5)
+
+        self.voice_status_lbl = ctk.CTkLabel(lang_frame, text=self.t("voice_on") if getattr(self, 'voice_enabled', False) else self.t("voice_off"), font=("Arial", 10))
+        self.voice_status_lbl.pack(pady=(0,10))
+
+        # Footer Stats
+        foot = ctk.CTkFrame(self.sidebar, fg_color=("gray90", "#2b2b2b"), corner_radius=10)
+        foot.pack(side="bottom", pady=20, padx=15, fill="x")
+        self.lvl_lbl = ctk.CTkLabel(foot, text=self.user_data['level'].upper(), font=("Arial", 12, "bold"), text_color=C_PRIMARY)
+        self.lvl_lbl.pack(pady=(10,0))
+        self.score_lbl = ctk.CTkLabel(foot, text=f"XP: {self.user_data['score']}", font=("Arial", 11), text_color=C_TEXT)
+        self.score_lbl.pack(pady=(0,10))
+
+    def setup_main_container(self):
+        self.main_view = ctk.CTkScrollableFrame(self, corner_radius=0, fg_color=C_BG)
+        self.main_view.grid(row=0, column=1, padx=0, pady=0, sticky="nsew")
+
+    def clear_view(self):
+        if self.panic_timer_id:
+            self.after_cancel(self.panic_timer_id)
+            self.panic_timer_id = None
+        for w in self.main_view.winfo_children(): w.destroy()
+
+    def toggle_theme(self):
+        if self.theme_switch.get():
+            ctk.set_appearance_mode("Dark")
+            self.dark_mode = True
+            self.user_data['theme'] = 'Dark'
+        else:
+            ctk.set_appearance_mode("Light")
+            self.dark_mode = False
+            self.user_data['theme'] = 'Light'
+        self.save_data()
+
+    def toggle_language(self):
+        self.lang = "kn" if self.lang == "en" else "en"
+        self.user_data['language'] = self.lang
+        self.save_data()
+        # Refresh sidebar text
+        for key, btn in self.nav_btns.items():
+            # Extract icon (first 4 chars usually "  ICON  ")
+            current_text = btn.cget("text")
+            icon_part = current_text[:6] 
+            btn.configure(text=f"{icon_part}{self.t(key)}")
+        # Update voice status label if present
+        if hasattr(self, 'voice_status_lbl'):
+            self.voice_status_lbl.configure(text=self.t("voice_on") if getattr(self, 'voice_enabled', False) else self.t("voice_off"))
+        
+        # Refresh current view
+        self.show_dashboard()
+
+    # --- DASHBOARD ---
+    def show_dashboard(self):
+        self.clear_view()
+        
+        # Ticker
+        self.ticker_lbl = ctk.CTkLabel(self.main_view, text="", font=("Consolas", 14), text_color=C_ACCENT, height=30, fg_color=C_SURFACE)
+        self.ticker_lbl.pack(fill="x")
+        self.update_ticker()
+        
+        # Welcome
+        hero = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        hero.pack(fill="x", padx=40, pady=30)
+        ctk.CTkLabel(hero, text=f"{self.t('welcome')}, {self.user_data['username']}", font=("Arial", 32, "bold"), text_color=C_TEXT).pack(anchor="w")
+        ctk.CTkLabel(hero, text=self.t("status"), font=("Arial", 14), text_color=C_TEXT_SEC).pack(anchor="w")
+
+        # Threat Level Indicator
+        threat_frame = ctk.CTkFrame(self.main_view, height=120, corner_radius=15, fg_color=C_SURFACE)
+        threat_frame.pack(fill="x", padx=40, pady=10)
+        
+        score_pct = min(self.user_data['score'] / 1000, 1.0)
+        status_color = C_SUCCESS if score_pct > 0.5 else ("#FF9800", "#FF9800") if score_pct > 0.2 else C_DANGER
+        status_text = self.t("secure") if score_pct > 0.5 else self.t("vulnerable") if score_pct > 0.2 else self.t("critical")
+        
+        ctk.CTkLabel(threat_frame, text=self.t("defense_level"), font=("Arial", 12, "bold"), text_color=C_TEXT_SEC).pack(pady=(15,5))
+        ctk.CTkProgressBar(threat_frame, height=20, progress_color=status_color).pack(fill="x", padx=20, pady=5)
+        ctk.CTkLabel(threat_frame, text=status_text, font=("Arial", 24, "bold"), text_color=status_color).pack(pady=5)
+
+        # Quick Actions
+        grid = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        grid.pack(fill="x", padx=30, pady=20)
+        
+        tools = [
+            ("Neural Shield", self.t("neural_shield"), self.show_neural_shield, C_PRIMARY),
+            ("CyberGPT", self.t("cybergpt"), self.show_cybergpt, C_ACCENT),
+            ("Panic Room", self.t("panic"), self.start_panic_drill, C_DANGER)
+        ]
+        
+        for i, (title, desc, cmd, color) in enumerate(tools):
+            card = ctk.CTkButton(grid, text=f"{title}\n{desc}", command=cmd, height=100, width=280, 
+                               fg_color=color, hover_color=color, corner_radius=15, font=("Arial", 18, "bold"))
+            card.grid(row=0, column=i, padx=10)
+
+    def update_ticker(self):
+        try:
+            self.ticker_lbl.configure(text=CYBER_NEWS_TICKER[self.ticker_idx])
+            self.ticker_idx = (self.ticker_idx + 1) % len(CYBER_NEWS_TICKER)
+            self.after(4000, self.update_ticker)
+        except: pass
+
+    # --- REAL-WORLD AI FEATURE 1: NEURAL SHIELD 2.0 ---
+    def show_neural_shield(self):
+        self.clear_view()
+        ctk.CTkLabel(self.main_view, text=f"🧠 {self.t('neural_shield')}", font=("Impact", 30), text_color=C_PRIMARY).pack(pady=30)
+        
+        input_frame = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        input_frame.pack(fill="x", padx=40, pady=20)
+        
+        ctk.CTkLabel(input_frame, text="Paste suspicious SMS or Email text:", text_color=C_TEXT).pack(anchor="w")
+        self.ns_entry = ctk.CTkEntry(input_frame, height=50, font=("Arial", 14))
+        self.ns_entry.pack(fill="x", pady=5)
+
+        # Voice Control
+        if VOICE_AVAILABLE:
+            mic_btn = ctk.CTkButton(input_frame, text=self.t("listen"), command=lambda: self.listen_voice(self.ns_entry), width=100, fg_color=C_ACCENT)
+            mic_btn.pack(pady=5, anchor="e")
+        
+        res_frame = ctk.CTkFrame(self.main_view, fg_color=C_SURFACE, corner_radius=15)
+        res_frame.pack(fill="x", padx=40, pady=20)
+        
+        spam_lbl = ctk.CTkLabel(res_frame, text=f"{self.t('spam_verdict')}: --", font=("Arial", 18, "bold"), text_color=C_TEXT_SEC)
+        spam_lbl.pack(pady=(20,5))
+        urgency_lbl = ctk.CTkLabel(res_frame, text=f"{self.t('tone')}: --", font=("Arial", 18, "bold"), text_color=C_TEXT_SEC)
+        urgency_lbl.pack(pady=(5,20))
+        
+        def analyze():
+            text = self.ns_entry.get().strip()
+            if not text: return
+            
+            # Use English AI models (Simulated multilang support via translation APIs would be next step for real world)
+            # For now, we assume analysis works best on English keywords but show results
+            label, confidence = self.spam_classifier.predict(text)
+            spam_color = C_DANGER if label == "SPAM" else C_SUCCESS
+            spam_lbl.configure(text=f"{self.t('spam_verdict')}: {label} ({confidence:.1f}%)", text_color=spam_color)
+            
+            tone_text, tone_color = self.urgency_detector.analyze(text)
+            urgency_lbl.configure(text=f"{self.t('tone')}: {tone_text}", text_color=tone_color)
+            
+            # Voice Output
+            if VOICE_AVAILABLE:
+                self.speak_text(f"Verdict is {label}. Tone is {tone_text}")
+
+        ctk.CTkButton(input_frame, text=self.t("run_analysis"), command=analyze, height=50, fg_color=C_ACCENT).pack(pady=10, fill="x")
+
+    # --- ENCRYPTION LAB ---
+    def show_encryption_lab(self):
+        self.clear_view()
+        ctk.CTkLabel(self.main_view, text=f"🔐 {self.t('encryption')}", font=("Impact", 30), text_color=C_ACCENT).pack(pady=20)
+        
+        tabview = ctk.CTkTabview(self.main_view, width=800)
+        tabview.pack(pady=20, padx=20)
+        tabview.add("Entropy Check")
+        tabview.add("Live Encryption")
+        
+        t1 = tabview.tab("Entropy Check")
+        ctk.CTkLabel(t1, text="AI Password Cracking Estimator", font=("Arial", 16, "bold")).pack(pady=10)
+        
+        pw_ent = ctk.CTkEntry(t1, placeholder_text="Type password...", width=300, show="*")
+        pw_ent.pack(pady=10)
+        
+        result_lbl = ctk.CTkLabel(t1, text="Entropy: 0 bits", font=("Consolas", 16))
+        result_lbl.pack(pady=20)
+        
+        def check_entropy(e):
+            pw = pw_ent.get()
+            bits, time_str = self.entropy_calc.calculate(pw)
+            color = C_SUCCESS if bits > 60 else C_DANGER
+            result_lbl.configure(text=f"Entropy: {bits:.1f} bits\nBrute Force Time: {time_str}", text_color=color)
+            
+        pw_ent.bind("<KeyRelease>", check_entropy)
+        
+        t2 = tabview.tab("Live Encryption")
+        inp = ctk.CTkEntry(t2, placeholder_text="Plain text...", width=400)
+        inp.pack(pady=10)
+        out = ctk.CTkLabel(t2, text="Ciphertext: ", font=("Consolas", 14), text_color=C_ACCENT, wraplength=400)
+        out.pack(pady=20)
+        
+        def encrypt_live(e):
+            txt = inp.get()
+            cipher = base64.b64encode(txt.encode()).decode() if txt else ""
+            out.configure(text=f"Ciphertext:\n{cipher}")
+        inp.bind("<KeyRelease>", encrypt_live)
+
+    # --- CYBER GPT ---
+    def show_cybergpt(self):
+        self.clear_view()
+        ctk.CTkLabel(self.main_view, text=f"🤖 {self.t('cybergpt')}", font=("Impact", 30), text_color=C_ACCENT).pack(pady=20)
+        
+        hist = ctk.CTkTextbox(self.main_view, height=400, font=("Arial", 14), fg_color=C_SURFACE, text_color=C_TEXT)
+        hist.pack(fill="both", padx=40, pady=10)
+        hist.insert("0.0", "AI: Online.\n\n")
+        
+        frame = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        frame.pack(fill="x", padx=40, pady=10)
+        
+        self.gpt_entry = ctk.CTkEntry(frame, placeholder_text="Ask about 'passwords', 'UPI'...", height=40)
+        self.gpt_entry.pack(side="left", fill="x", expand=True, padx=(0,10))
+        
+        # Voice Buttons
+        if VOICE_AVAILABLE:
+            mic_btn = ctk.CTkButton(frame, text="🎤", width=40, command=lambda: self.listen_voice(self.gpt_entry), fg_color=C_ACCENT)
+            mic_btn.pack(side="left", padx=5)
+
+        def ask():
+            q = self.gpt_entry.get().lower()
+            if not q: return
+            hist.insert("end", f"YOU: {q}\n")
+            
+            # Select Knowledge Base based on Lang
+            kb = AI_KNOWLEDGE_BASE.get(self.lang, AI_KNOWLEDGE_BASE["en"])
+            keys = list(kb.keys())
+            
+            matches = difflib.get_close_matches(q, keys, n=1, cutoff=0.4)
+            
+            if matches:
+                best_match = matches[0]
+                ans = kb[best_match]
+                hist.insert("end", f"AI: {ans}\n\n")
+                if VOICE_AVAILABLE: self.speak_text(ans)
+            else:
+                found = False
+                for k, v in kb.items():
+                    if k in q: 
+                        hist.insert("end", f"AI: {v}\n\n")
+                        if VOICE_AVAILABLE: self.speak_text(v)
+                        found = True
+                        break
+                if not found:
+                    msg = "I didn't quite catch that." if self.lang == "en" else "ನನಗೆ ಅದು ಅರ್ಥವಾಗಲಿಲ್ಲ."
+                    hist.insert("end", f"AI: {msg}\n\n")
+            
+            self.gpt_entry.delete(0, "end")
+            hist.see("end")
+            
+        ctk.CTkButton(frame, text=self.t("send"), command=ask, width=100, height=40, fg_color=C_PRIMARY).pack(side="right")
+        self.gpt_entry.bind("<Return>", lambda e: ask())
+
+    # --- SOS CENTER ---
+    def show_sos_center(self):
+        self.clear_view()
+        ctk.CTkLabel(self.main_view, text=f"🆘 {self.t('sos')}", font=("Impact", 36), text_color=C_DANGER).pack(pady=30)
+        
+        emergencies = [
+            ("FINANCIAL FRAUD", "Unauth. Transaction", "1. Call 1930 NOW.\n2. Block Card via App."),
+            ("SOCIAL HACK", "Account Stolen", "1. Check email for 'Login Alert'.\n2. Use 'Forgot Password'."),
+            ("IDENTITY THEFT", "Docs Leaked", "1. Lock Biometrics (mAadhaar).\n2. Check CIBIL."),
+            ("DEVICE LOST", "Phone Stolen", "1. Use 'Find My Device'.\n2. Block SIM.")
+        ]
+
+        grid = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        grid.pack(pady=10)
+
+        for i, (title, sub, steps) in enumerate(emergencies):
+            btn = ctk.CTkButton(grid, text=f"{title}\n{sub}", height=100, width=300,
+                               fg_color=C_SURFACE, text_color=C_DANGER, hover_color=("gray85", "#333"),
+                               font=("Arial", 16, "bold"), border_width=2, border_color=C_DANGER,
+                               command=lambda t=title, s=steps: self.show_alert(t, s))
+            btn.grid(row=i//2, column=i%2, padx=10, pady=10)
+
+    def show_alert(self, title, msg):
+        win = ctk.CTkToplevel(self)
+        win.title("ACTION PLAN")
+        win.geometry("500x400")
+        
+        # FIX: Ensure window stays on top and grabs focus
+        win.attributes('-topmost', True)
+        win.grab_set()
+        win.focus_force()
+        
+        ctk.CTkLabel(win, text=f"🚨 {title}", font=("Impact", 24), text_color=C_DANGER).pack(pady=20)
+        
+        # FIX: Added wraplength to prevent text cutoff
+        ctk.CTkLabel(win, text=msg, font=("Arial", 16), justify="left", wraplength=450).pack(pady=20, padx=20)
+        
+        ctk.CTkButton(win, text="OK", command=win.destroy, fg_color=C_DANGER).pack(pady=20)
+
+    # --- SIMULATIONS ---
+    def start_game(self):
+        self.clear_view()
+        self.current_scenario_idx = 0
+        self.render_scenario()
+
+    def render_scenario(self):
+        if self.current_scenario_idx >= len(SCENARIO_BANK):
+            self.show_dashboard()
+            return
+        s = SCENARIO_BANK[self.current_scenario_idx]
+        
+        # Fetch translated content
+        title = s['title'].get(self.lang, s['title']['en'])
+        text = s['text'].get(self.lang, s['text']['en'])
+        opts = s['options'].get(self.lang, s['options']['en'])
+        
+        ctk.CTkLabel(self.main_view, text=f"MISSION {self.current_scenario_idx+1}", text_color=C_PRIMARY).pack(pady=(30, 0))
+        
+        card = ctk.CTkFrame(self.main_view, fg_color=C_SURFACE, corner_radius=20, border_width=1, border_color="gray")
+        card.pack(pady=20, padx=60, fill="both", expand=True)
+        
+        ctk.CTkLabel(card, text=s['category'].upper(), font=("Arial", 12, "bold"), text_color="#FF9800").pack(pady=(30,10))
+        ctk.CTkLabel(card, text=title, font=("Arial", 28, "bold"), text_color=C_TEXT).pack(pady=10)
+        ctk.CTkLabel(card, text=text, font=("Arial", 18), wraplength=800, text_color=C_TEXT).pack(pady=20)
+        
+        if VOICE_AVAILABLE:
+            ctk.CTkButton(card, text=self.t("speak"), command=lambda: self.speak_text(text), width=100, fg_color=C_ACCENT).pack(pady=5)
+        
+        opts_frame = ctk.CTkFrame(card, fg_color="transparent")
+        opts_frame.pack(pady=20, fill="x")
+        
+        for i, opt in enumerate(opts):
+            ctk.CTkButton(opts_frame, text=opt, height=60, corner_radius=12, font=("Arial", 16),
+                          fg_color=("gray90", "#2b2b2b"), hover_color=C_PRIMARY, text_color=C_TEXT,
+                          command=lambda idx=i: self.process_answer(idx)).pack(pady=8, padx=100, fill="x")
+
+    def process_answer(self, idx):
+        s = SCENARIO_BANK[self.current_scenario_idx]
+        correct = (idx == s['correct'])
+        self.clear_view()
+        
+        bg = C_SUCCESS if correct else C_DANGER
+        res_frame = ctk.CTkFrame(self.main_view, fg_color=bg, corner_radius=0)
+        res_frame.pack(fill="both", expand=True)
+        
+        ctk.CTkLabel(res_frame, text="ACCESS GRANTED" if correct else "SECURITY BREACH", 
+                     font=("Impact", 40), text_color="white").pack(pady=(100, 20))
+        
+        expl = s['explanation'].get(self.lang, s['explanation']['en'])
+        ctk.CTkLabel(res_frame, text=expl, font=("Arial", 20), wraplength=700, text_color="white").pack(pady=20)
+        
+        if correct: self.user_data['score'] += 100
+        else: self.user_data['weak_points'].append(s['category'])
+        
+        self.save_data()
+        ctk.CTkButton(res_frame, text="CONTINUE", font=("Arial", 16, "bold"),
+                     fg_color="white", text_color="black", hover_color="#dddddd",
+                     command=self.next_scenario).pack(pady=40)
+
+    def next_scenario(self):
+        self.current_scenario_idx += 1
+        self.render_scenario()
+
+    # --- VAULT ---
+    def show_vault(self):
+        self.clear_view()
+        ctk.CTkLabel(self.main_view, text=f"🔐 {self.t('vault')}", font=("Impact", 30), text_color=C_ACCENT).pack(pady=30)
+        
+        list_frame = ctk.CTkFrame(self.main_view, fg_color=C_SURFACE)
+        list_frame.pack(fill="x", padx=40, pady=20)
+        
+        if not self.vault_data:
+            ctk.CTkLabel(list_frame, text=self.t('vault_empty'), text_color="gray").pack(pady=20)
+        
+        for k, v in self.vault_data.items():
+            row = ctk.CTkFrame(list_frame, fg_color=("gray95", "#2b2b2b"))
+            row.pack(fill="x", pady=2, padx=5)
+            ctk.CTkLabel(row, text=k, font=("Arial", 14, "bold"), text_color=C_TEXT).pack(side="left", padx=10, pady=10)
+            ctk.CTkLabel(row, text="********", font=("Arial", 14), text_color="gray").pack(side="left", padx=10)
+        
+        add_frame = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        add_frame.pack(pady=20)
+        
+        k_ent = ctk.CTkEntry(add_frame, placeholder_text="Title")
+        k_ent.pack(side="left", padx=5)
+        v_ent = ctk.CTkEntry(add_frame, placeholder_text="Secret", show="*")
+        v_ent.pack(side="left", padx=5)
+        
+        def add_secret():
+            if k_ent.get() and v_ent.get():
+                self.vault_data[k_ent.get()] = base64.b64encode(v_ent.get().encode()).decode()
+                self.save_vault()
+                self.show_vault()
+                
+        ctk.CTkButton(add_frame, text="SAVE", command=add_secret, fg_color=C_ACCENT).pack(side="left", padx=5)
+
+    # --- PANIC DRILL ---
+    def start_panic_drill(self):
+        self.clear_view()
+        self.panic_seconds_left = 45
+        self.main_view.configure(fg_color="#3b0000")
+        
+        ctk.CTkLabel(self.main_view, text=f"🚨 {self.t('panic')} 🚨", font=("Impact", 40), text_color="#FF5252").pack(pady=30)
+        self.timer_lbl = ctk.CTkLabel(self.main_view, text="45s", font=("Courier New", 60, "bold"), text_color="white")
+        self.timer_lbl.pack(pady=10)
+        
+        qn_frame = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        qn_frame.pack(pady=20)
+        
+        self.p_var = tk.StringVar(value="")
+        ctk.CTkLabel(qn_frame, text="Select the SAFE file to restore system:", font=("Arial", 18, "bold"), text_color="white").pack(pady=10)
+        ctk.CTkRadioButton(qn_frame, text="invoice_v2.exe", variable=self.p_var, value="bad1", font=("Arial", 16), text_color="white").pack()
+        ctk.CTkRadioButton(qn_frame, text="vacation_photos.pdf", variable=self.p_var, value="good", font=("Arial", 16), text_color="white").pack()
+        ctk.CTkRadioButton(qn_frame, text="win_update.vbs", variable=self.p_var, value="bad2", font=("Arial", 16), text_color="white").pack()
+        
+        ctk.CTkButton(self.main_view, text="DECRYPT", fg_color="white", text_color="red", 
+                     font=("Impact", 20), command=self.check_panic).pack(pady=30)
+        
+        self.run_panic_timer()
+
+    def run_panic_timer(self):
+        if self.panic_seconds_left > 0:
+            self.panic_seconds_left -= 1
+            self.timer_lbl.configure(text=f"{self.panic_seconds_left}s")
+            self.panic_timer_id = self.after(1000, self.run_panic_timer)
+        else:
+            self.check_panic(timeout=True)
+
+    def check_panic(self, timeout=False):
+        if self.panic_timer_id:
+            self.after_cancel(self.panic_timer_id)
+            self.panic_timer_id = None
+        success = (self.p_var.get() == "good") and not timeout
+        self.clear_view()
+        self.main_view.configure(fg_color=C_BG) 
+        
+        title = "RESTORED" if success else "ENCRYPTED"
+        color = C_SUCCESS if success else C_DANGER
+        
+        ctk.CTkLabel(self.main_view, text=title, font=("Impact", 40), text_color=color).pack(pady=50)
+        ctk.CTkButton(self.main_view, text="HOME", command=self.show_dashboard).pack(pady=20)
+
+if __name__ == "__main__":
+    app = SafetyTutorApp()
+    app.mainloop()
